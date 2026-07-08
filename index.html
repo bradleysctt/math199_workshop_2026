@@ -1415,7 +1415,9 @@ input[type=range]::-webkit-slider-thumb {
       <li><strong>Convolution</strong> slides a kernel over every position: \(O[i,j] = \sum_m \sum_n I[i{+}m,\, j{+}n] \cdot K[m,n]\). All linear filters (Sobel, blur, sharpen) follow this formula — only the kernel numbers change.</li>
       <li><strong>Sobel edge detection</strong> — \(G_x = [[-1,0,1],\,[-2,0,2],\,[-1,0,1]]\) approximates \(\partial I/\partial x\) (vertical edges); \(G_y\) captures \(\partial I/\partial y\) (horizontal edges). Combined edge magnitude: \(\sqrt{G_x^2 + G_y^2}\) at each pixel.</li>
       <li><strong>Gaussian blur</strong> — weights follow a 2-D Gaussian bell curve, so nearby pixels contribute more than distant ones. Smooths out small speckly noise while keeping the overall shapes in the image intact.</li>
-      <li><strong>Erosion and dilation</strong> work differently from the filters above — instead of a weighted sum, they just look at the neighbouring pixels directly. <strong>Erosion</strong>: \(E[i,j] = \min_{(m,n)\in S} I[i{+}m,\, j{+}n]\) — replaces each pixel with the darkest one nearby, shrinking bright regions. <strong>Dilation</strong>: \(D[i,j] = \max_{(m,n)\in S} I[i{+}m,\, j{+}n]\) — replaces each pixel with the brightest one nearby, expanding bright regions.</li>
+      <li><strong>Erosion and dilation</strong> work differently from the filters above — instead of a weighted sum, they just look at the neighbouring pixels directly.<br> 
+        <strong>Erosion</strong>: \(E[i,j] = \min_{(m,n)\in S} I[i{+}m,\, j{+}n]\) — replaces each pixel with the darkest one nearby, shrinking bright regions. <br>
+        <strong>Dilation</strong>: \(D[i,j] = \max_{(m,n)\in S} I[i{+}m,\, j{+}n]\) — replaces each pixel with the brightest one nearby, expanding bright regions.</li>
     </ul>
   </div>
 </section>
