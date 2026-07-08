@@ -406,6 +406,14 @@ ul.section-intro strong {
   min-height: 80px;
 }
 
+/* DM Mono only ships weights 400/500, no true bold face, so <strong> here
+   is nearly invisible at font-weight:700. Fall back to the heaviest
+   available weight; colour is set per-instance so inherited tints
+   (e.g. inside a coloured <span>) aren't overridden. */
+.computation-box strong {
+  font-weight: 500;
+}
+
 .computation-box .result {
   color: var(--cyan);
   font-size: 1rem;
@@ -1285,9 +1293,9 @@ input[type=range]::-webkit-slider-thumb {
   <div class="section-notes">
     <div class="section-notes-label">The maths behind pixels</div>
     <ul>
-      <li>A greyscale image is a 2D matrix I where each entry I[i,j] ∈ {0, 1, ..., 255}: I ∈ ℤ^(H×W).</li>
-      <li>A colour image has three such matrices, one per channel: I_colour ∈ ℤ^(H×W×3) → [R, G, B] per pixel.</li>
-      <li>A 1080p image (1920×1080) stores 1920 × 1080 × 3 = <strong>6,220,800</strong> values.</li>
+      <li>A greyscale image is a 2D matrix \(I\) where each entry \(I[i,j] \in \{0, 1, \ldots, 255\}\): \(I \in \mathbb{Z}^{H\times W}\).</li>
+      <li>A colour image has three such matrices, one per channel: \(I_{\text{colour}} \in \mathbb{Z}^{H\times W\times 3}\) → [R, G, B] per pixel.</li>
+      <li>A 1080p image (1920×1080) stores \(1920 \times 1080 \times 3 =\) <strong>6,220,800</strong> values.</li>
     </ul>
   </div>
 </section>
@@ -1395,7 +1403,7 @@ input[type=range]::-webkit-slider-thumb {
     </div>
 
     <div class="computation-box" style="margin-top:1.25rem; border-left-color: var(--yellow);">
-      <span style="color:var(--text)">Until roughly 2012, this was how computer vision worked: computer scientists and mathematicians designed filters by hand to perform specific tasksso.</span><br>
+      <span style="color:var(--text)">Until roughly 2012, this was how computer vision worked: computer scientists and mathematicians designed filters by hand to perform specific tasks.</span><br>
       <span style="color:var(--yellow)">Deep learning changed that. Instead of designing filters, we let the network <strong>work out its own numbers</strong> by learning from its mistakes.</span><br>
       <span style="color:var(--text)">The next section shows how that learning works.</span>
     </div>
@@ -1406,8 +1414,8 @@ input[type=range]::-webkit-slider-thumb {
     <ul>
       <li><strong>Convolution</strong> slides a kernel over every position: \(O[i,j] = \sum_m \sum_n I[i{+}m,\, j{+}n] \cdot K[m,n]\). All linear filters (Sobel, blur, sharpen) follow this formula — only the kernel numbers change.</li>
       <li><strong>Sobel edge detection</strong> — \(G_x = [[-1,0,1],\,[-2,0,2],\,[-1,0,1]]\) approximates \(\partial I/\partial x\) (vertical edges); \(G_y\) captures \(\partial I/\partial y\) (horizontal edges). Combined edge magnitude: \(\sqrt{G_x^2 + G_y^2}\) at each pixel.</li>
-      <li><strong>Gaussian blur</strong> — weights follow a 2-D Gaussian bell curve, so nearby pixels contribute more than distant ones. Reduces high-frequency noise while preserving low-frequency structure.</li>
-      <li><strong>Morphological filters</strong> are <em>not</em> convolution — they use min or max over a neighbourhood (the <em>structuring element</em>) instead of a weighted sum. <strong>Erosion</strong>: \(E[i,j] = \min_{(m,n)\in S} I[i{+}m,\, j{+}n]\) — shrinks bright regions. <strong>Dilation</strong>: \(D[i,j] = \max_{(m,n)\in S} I[i{+}m,\, j{+}n]\) — expands them. Erosion then dilation = <em>opening</em> (removes small bright specks); dilation then erosion = <em>closing</em> (fills small holes).</li>
+      <li><strong>Gaussian blur</strong> — weights follow a 2-D Gaussian bell curve, so nearby pixels contribute more than distant ones. Smooths out small speckly noise while keeping the overall shapes in the image intact.</li>
+      <li><strong>Erosion and dilation</strong> work differently from the filters above — instead of a weighted sum, they just look at the neighbouring pixels directly. <strong>Erosion</strong>: \(E[i,j] = \min_{(m,n)\in S} I[i{+}m,\, j{+}n]\) — replaces each pixel with the darkest one nearby, shrinking bright regions. <strong>Dilation</strong>: \(D[i,j] = \max_{(m,n)\in S} I[i{+}m,\, j{+}n]\) — replaces each pixel with the brightest one nearby, expanding bright regions.</li>
     </ul>
   </div>
 </section>
@@ -1417,28 +1425,33 @@ input[type=range]::-webkit-slider-thumb {
 <!-- ══════════════════════════════════════════════ SECTION 3: BACKPROP -->
 <section class="section" id="section-backprop">
   <div class="section-label">Part 3: How AI Learns</div>
-  <h2>Backpropagation:<br>The Chain Rule in action</h2>
+  <h2>Weights, activations,<br>and gradients</h2>
   <p class="section-intro" style="max-width:none;">
     A trained neural network contains thousands of filters like the one you just made, but nobody designed any of them.
-    Each number is found by repeating one loop: provide an input, measure how wrong the output is (error calculation), 
-    then adjust every filter a little bit to reduce the error. 
-    Below, we will step through that process for a 'simple' neural network.
+    Each number is found by repeating one loop: provide an input, measure how wrong the output is (error calculation),
+    then adjust every filter a little bit to reduce the error.
+    Below, we'll cover the terms that loop relies on, then step through it on a small example network.
   </p>
 
   <p class="section-intro" style="margin-bottom:1rem; max-width:none;">But first, let's introduce some terminology:</p>
   <ul class="section-intro" style="margin-top:1.25rem; padding-left:1.2rem; max-width:none;">
+    <li style="margin-bottom:0.6rem;"><strong>Node</strong> and <strong>layer</strong>: a node is one small unit that computes a weighted sum and passes it on. A layer is a group of nodes at the same stage within a neural network. The tiny network we will look at today has three layers: an input layer (\(x\)), a hidden layer (\(h_1\)), and an output layer (\(\hat{y}\)). Real networks stack many more hidden layers between input and output, which is what "deep" in deep learning refers to.</li>
     <li style="margin-bottom:0.6rem;"><strong>Weight</strong>, like \(w_1\) or \(w_2\) below: a number the network multiplies its input by - this performs the same job as the nine numbers in the Sobel kernel above. Training only ever changes these weights (and a similar number called a <strong>bias</strong>, \(b_1\) and \(b_2\)), but never the network's structure.</li>
-    <li style="margin-bottom:0.6rem;"><strong>\(z\)</strong>: the raw weighted sum at a node, e.g. \(z_1 = w_1 \times x + b_1\). An <strong>activation function</strong> is then applied to \(z\) to produce the node's output \(h = f(z)\). In the network below we apply a <strong>ReLU</strong> function after the hidden node, so \(h_1 = \text{ReLU}(z_1)\). The output node has no activation (standard for regression), so \(\hat{y} = z_2\).</li>
+    <li style="margin-bottom:0.6rem;"><strong>\(z\)</strong>: the raw weighted sum at a node, e.g. \(z_1 = w_1 \times x + b_1\). An <strong>activation function</strong> is then applied to \(z\) to produce the node's output \(h = f(z)\). In the network below we apply <strong>ReLU</strong> after the hidden node, so \(h_1 = \text{ReLU}(z_1)\). The output node skips this step, so \(\hat{y} = z_2\) directly.</li>
     <li style="margin-bottom:0.6rem;"><strong>\(\hat{y}\)</strong> ("y-hat"): the network's prediction, and <strong>\(y\)</strong>, the true answer it's trying to match.</li>
     <li style="margin-bottom:0.6rem;"><strong>Loss</strong>: a single number measuring how wrong \(\hat{y}\) is. Bigger means worse; zero means a perfect prediction.</li>
     <li style="margin-bottom:0.6rem;"><strong>Gradient</strong>, written \(\partial L/\partial w\): the answer to one question about one weight, "if I adjust this weight slightly, does the loss go up or down, and by how much?" That's the number we need for every weight in the network.</li>
     <li><strong>\(\alpha\)</strong> (learning rate): how big a step we take once we know a gradient. This is typically a small number; in the example below we use 0.01.</li>
   </ul>
 
+  <p class="section-intro" style="max-width:none;">
+    One of those terms is worth a closer look before we see it in action: the <strong>activation function</strong>. Here's why it matters, then we'll step through the example network.
+  </p>
+
   <div class="card" style="margin-top:1.5rem;">
-    <div class="card-label">Activation functions: why non-linearity matters</div>
+    <div class="card-label">Activation functions</div>
     <p style="font-size:0.85rem; color:var(--muted); margin-bottom:1.25rem;">
-      Without a non-linear step, any stack of linear layers collapses to a single linear transformation — no matter how deep the network. An activation function \(f\) is applied to each node's raw sum \(z\) before its output is passed forward, giving \(h = f(z)\). This lets deep networks model curves, boundaries, and patterns that no single linear layer could capture.
+      If every layer only multiplies and adds, stacking more of them doesn't add any real power — mathematically, it's no different from having just one layer, no matter how many you stack. An activation function \(f\) is applied to each raw sum \(z\) before it's passed forward, giving \(h = f(z)\). This small extra step is what lets deep networks model curves, boundaries, and complex patterns that a single straight-line layer never could.
     </p>
 
     <div style="display:flex; gap:2rem; flex-wrap:wrap; justify-content:center; margin-bottom:1.25rem;">
@@ -1478,13 +1491,16 @@ input[type=range]::-webkit-slider-thumb {
     </div>
 
     <div class="computation-box" style="border-left-color:var(--yellow);">
-      <strong style="color:var(--yellow);">Why the derivative is what matters for training:</strong>
-      During backpropagation, each activation contributes its derivative to the chain rule.
-      For ReLU: the derivative is <strong>1</strong> when \(z > 0\) (gradient passes through unchanged) and <strong>0</strong> when \(z \leq 0\) (gradient is blocked entirely — <em>dead neuron</em>).
-      For sigmoid: the derivative peaks at 0.25 when \(z=0\) and shrinks toward 0 at both extremes, causing gradients to vanish across many layers.
+      Each activation's derivative feeds into the chain rule during training.<br>
+      <strong style="color:var(--yellow)">For ReLU:</strong> the derivative is <strong style="color:var(--green)">1</strong> when \(z > 0\) (gradient passes through unchanged) and <strong style="color:var(--red)">0</strong> when \(z \leq 0\) (gradient is zero — <em>dead neuron</em>).<br>
+      For sigmoid: the derivative peaks at 0.25 when \(z=0\) and shrinks toward 0 at both extremes, causing gradients to vanish across many layers.<br>
       ReLU avoids this, which is why it dominates in deep networks.
     </div>
   </div>
+
+  <p class="section-intro" style="max-width:none;">
+    Now let's put weights, ReLU, and gradients together in one small network. Working backward from the loss to find every weight's gradient, one layer at a time, is called <strong>backpropagation</strong> - watch it happen step by step below.
+  </p>
 
   <div class="card" style="margin-top:1.5rem;">
     <div class="card-label">Tiny network: \(x=2,\; w_1=3,\; w_2=-2,\; b_1=1,\; b_2=4,\;\) target \(y=10\)</div>
@@ -1528,8 +1544,8 @@ input[type=range]::-webkit-slider-thumb {
         <div class="bp-step-num">→</div>
         <div class="bp-step-content">
           <div class="bp-step-title">Forward pass: compute the prediction</div>
-          <div class="bp-step-eq">$$z_1 = w_1 \times x + b_1 = 3 \times 2 + 1 = 7,\quad h_1 = \text{ReLU}(z_1) = \max(0,\,7) = 7$$</div>
-          <div class="bp-step-eq">$$z_2 = w_2 \times h_1 + b_2 = -2 \times 7 + 4 = -10,\quad \text{so}\quad \hat{y} = -10$$</div>
+          <div class="bp-step-eq">\(z_1 = w_1 \times x + b_1 = 3 \times 2 + 1 = 7,\quad h_1 = \text{ReLU}(z_1) = \max(0,\,7) = 7\)</div>
+          <div class="bp-step-eq">\(z_2 = w_2 \times h_1 + b_2 = -2 \times 7 + 4 = -10,\quad \text{so}\quad \hat{y} = -10\)</div>
           <div class="bp-step-eq">\(L = \tfrac{1}{2}(y - \hat{y})^2 = \tfrac{1}{2}(10-(-10))^2 =\) <strong style="color:var(--red)">200</strong></div>
           <p style="font-size:0.78rem;color:var(--muted);margin-top:0.4rem;">
             The target was \(y=10\) and the network predicted \(\hat{y}=-10\), so \(L\) squares that gap (and halves it, a convention that keeps the derivative tidy). A perfect prediction would give \(L=0\).
@@ -1555,7 +1571,7 @@ input[type=range]::-webkit-slider-thumb {
           <div class="bp-step-title">Backward step 2: the gradient for \(w_2\)</div>
           <p style="font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem;">
             Chain rule: \(\dfrac{\partial L}{\partial w_2} = \dfrac{\partial L}{\partial\hat{y}} \cdot \dfrac{\partial\hat{y}}{\partial z_2} \cdot \dfrac{\partial z_2}{\partial w_2}\)<br>
-            Since \(z_2 = w_2 \cdot h_1 + b_2\), we get \(\partial z_2/\partial w_2 = h_1 = 7\). And \(\partial\hat{y}/\partial z_2 = 1\) because the output node has no activation (a standard convention for regression), so \(\hat{y} = z_2\) directly.
+            Since \(z_2 = w_2 \cdot h_1 + b_2\), we get \(\partial z_2/\partial w_2 = h_1 = 7\). And \(\partial\hat{y}/\partial z_2 = 1\) because the output node skips the activation step, so \(\hat{y} = z_2\) directly.
           </p>
           <div class="answer-row">
             <span class="answer-eq">\(\partial L/\partial w_2 = -20 \times 1 \times 7 =\)</span>
@@ -1611,7 +1627,6 @@ input[type=range]::-webkit-slider-thumb {
       <li>Each gradient answers: <em>"if I increase this weight, does the loss go up or down?"</em></li>
       <li>We move the weight a small step in the opposite direction, downhill, scaled by the learning rate \(\alpha\): \(w_\text{new} = w_\text{old} - \alpha \times \partial L/\partial w\).</li>
       <li>Done millions of times across thousands of examples, the model's predictions steadily improve.</li>
-      <li><strong>Activation functions</strong> introduce non-linearity so stacked layers can represent complex functions. \(\text{ReLU}(z) = \max(0,z)\) is the dominant choice in deep networks: its derivative is 1 for \(z>0\) (gradient flows freely) and 0 for \(z\leq 0\) (neuron is "dead" for that input). Sigmoid \(\sigma(z) = 1/(1+e^{-z})\) squashes output to \((0,1)\) — useful for probability outputs, but its derivative caps at 0.25 and causes <em>vanishing gradients</em> in deep networks.</li>
     </ul>
   </div>
 </section>
@@ -1714,24 +1729,21 @@ input[type=range]::-webkit-slider-thumb {
   <p class="section-intro" style="max-width:none;">
     Everything so far has treated images as flat. But the real world isn't flat: determining depth - or an object's distance from a camera - 
     is another key part of understanding the world. <br><br>
-    To achieve this, we can use a variety of sensors: LiDAR, Radar, stereo cameras, and more recently, monocular depth estimation.  
-    In the example below, we utilise a neural network for monocular depth - estimating the distance for each pixel in a single image. 
-    The result is a depth map and point cloud you can spin around.
+    There are a few ways to measure it: LiDAR, radar, stereo cameras (like human eyes), and, more recently, <strong>monocular depth estimation</strong> - using a single ordinary photo.
+    In the example below, a neural network does exactly that: estimating the distance for every pixel in one image.
+    The result is a depth map and a point cloud you can spin around.
   </p>
 
   <div class="concept-cards">
     <div class="concept-card">
-      <div class="concept-card-icon">📷</div>
       <div class="concept-card-title">Monocular depth</div>
       <div class="concept-card-desc">From one image, the model infers distance using shading, size and context cues</div>
     </div>
     <div class="concept-card">
-      <div class="concept-card-icon">🎨</div>
       <div class="concept-card-title">Depth map</div>
       <div class="concept-card-desc">Each pixel gets a depth value. Colour-coded: blue = far, red = close</div>
     </div>
     <div class="concept-card">
-      <div class="concept-card-icon">☁️</div>
       <div class="concept-card-title">Point cloud</div>
       <div class="concept-card-desc">Depth map → 3D coordinates. Each pixel becomes a point in space, the same format a LiDAR sensor produces</div>
     </div>
@@ -1744,9 +1756,11 @@ input[type=range]::-webkit-slider-thumb {
 
     <div class="yolo-demo" style="margin-top:1.5rem;">
       <div>
+        <div class="view-toggle" style="visibility:hidden;" aria-hidden="true">
+          <button class="view-btn">spacer</button>
+        </div>
         <div class="upload-zone" id="depth-upload-zone" onclick="document.getElementById('depth-file-input').click()">
           <input type="file" id="depth-file-input" accept="image/*" onchange="handleDepthUpload(event)">
-          <div class="upload-icon">🌄</div>
           <div class="upload-text">Upload a photo</div>
           <div class="upload-subtext">Works best with outdoor scenes, rooms, or faces</div>
         </div>
@@ -1765,7 +1779,6 @@ input[type=range]::-webkit-slider-thumb {
         <div id="depth-canvas-container">
           <canvas id="depth-canvas"></canvas>
           <div class="depth-placeholder" id="depth-placeholder">
-            <div style="font-size:2rem;margin-bottom:0.5rem">🗺️</div>
             Depth map will appear here
           </div>
         </div>
@@ -1786,13 +1799,29 @@ input[type=range]::-webkit-slider-thumb {
     <div class="section-notes-label">How depth estimation works, and how it connects to LiDAR</div>
     <ul>
       <li>Humans judge depth with one eye using several cues: distant objects appear smaller, are overlapped by nearer ones, and have softer edges. Depth Anything is a neural network trained on over 60 million images to learn these patterns: input H×W×3 image → encoder (feature extraction) → decoder → H×W depth map.</li>
-      <li>The architecture is a <strong>transformer-based encoder</strong>, the same attention mechanism that powers GPT, but instead of predicting the next word, it predicts a depth value for every pixel. Point cloud conversion: for each pixel (u,v) with depth d, the 3D position is roughly (u·d, v·d, d), simple geometry, but powerful when you have depth for every pixel.</li>
+      <li>Under the hood, this is built the same way as ChatGPT, Claude, and other AI - but instead of predicting the next word in a sentence, it predicts a depth value for every pixel. Point cloud conversion: for each pixel (u,v) with depth d, the 3D position is roughly (u·d, v·d, d), simple geometry, but powerful when you have depth for every pixel.</li>
       <li>Camera-based depth estimation and LiDAR solve the same problem differently. LiDAR fires laser pulses and measures the return time: direct and precise, but expensive and sparse. Cameras are cheap and dense but ambiguous about absolute scale.</li>
       <li>Modern autonomous systems often fuse both: LiDAR gives accurate sparse depth, the camera fills in dense texture. This is exactly the pipeline used in self-driving cars, and increasingly in drones for navigation and mapping.</li>
     </ul>
   </div>
 </section>
 
+
+<hr class="divider">
+
+<section class="section" style="padding-top:3rem; padding-bottom:3rem;">
+  <div class="colab-card">
+    <div style="display:flex; align-items:center; justify-content:center; gap:2rem; margin-bottom:1rem; flex-wrap:wrap;">
+      <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKwAAACPCAYAAABnCTBAAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAACuUSURBVHhe7Z0JuK7luMc5xxyFTGUMRyjzGDKEhCSKU8YjKtMhkvkICSWpDA0kIRJxnCgcKVSGk/kgGROylexd9lr7+97nvt9z/R7/5z3P93zvt9bau7X22vvr+V/XutZa7zzc7/Pc9/+ernGNioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKioqKimVA27bXPP/886/dtu0/83f6KbfLkW/Xtu212LfcZm3Qtu2c58+W/5POd618/brA3W/q7tu7+/PN7K3ufqyZnWpmXzazM83sDHf/hLu/x91f5e67u/u92ra9QXmsueDuN3L3e7j7tu6+zTL/3LNt2zte1fe1rGjb9n7u/r9m9ncz+4OZXWBmPzKz/3H3b5nZeWZ2rrvz+ztt255vZj8xs1+Z2Qr7Bz5cHnehaNv2emb2GzO7wswucfcL3P377v5tzunu3zWzH5vZr83sL2a22syOLY8zH9q2vYm7P9jd36L7Wunug3aBcPfg7jPufpmZnWNmh7Vtu2vbtndAKPmYynMCd3+cmX3RzA4xsyPMjA/g8PyHZfrh7/l+3r2AH7Y7slh2mJl9wMxOcPebl9e50cDd76KR5Afu/pfyRc0Fd/+1u3/P3V9XHnehaNv2Ou7+KXfno+B4TXke4O5Dd/8lQhxCOKA8Th8QInff2t33Q0h7jmnu/gd3/4aZnayX/HYze6eZvV/X9TV9RLPl/oAP3d2/5O4HDIfDR7Rte7P8Gtx9R3d/k7sfaGanufvn3f1zbdt+Vj+fM7PPskwjfP7zGdaZ2ef1+z/dnX1OyX90nennVHc/STPDp939k/ph2XPd/T/cfYv8Gjc6IDRt297K3XcIIXymfCklEGx3fyNTXdu2m00aXRYKqQObDQaDe4UQXosQ5OdjNAwhvGowGDC1blqqDH1w9y0REnf/RX6sBHc/x91f6e4PZYQs909gBmA6DyH8q0bIC8tjJWjU/iIjedrf3R/LB+DuZ7Vty6DwOUbrYj+E82v5sgR3Z+bjg+H3xSGEi8r9c7j75RJiRtlfZcv5OA8JIWz8ApvD3W/NKDb6GEZhZgeV+y0m3P3g/HxrO4K7+5PN7Af5MRLM7HchhBe4+y3L/eYDHwozUgjh9ZNmI80EL077NE2zI6M2Hziqk/5mWuZahmZ2XAjhdUzjCDvHQPDN7KvufrSZfdzMzjaz483sdHf/srt/UMtRm1bn5zezj7Zty/T/HeneF+u6ENi3T53AAm4sfwg5mEKHw+H25T6LicFgsE06n5mtYbQst+mDu183hMDUO/ISEzCoELhyv3XBYDC4t5l9ozwHenEIYe+0HSNs27aMsPu7++tDCHuaGVP3SWbGlH28u+9sZgcjlAgjs0wI4U1mdpa7c/9rzIztV0iXvtLMftg0zePRSXXexpFKsxmpD2fxW+tQWwbu/o6pFNgQwovMrNcgwUDD0iz3WUxolL+E85nZL1euXHmTcpsS7r6Ju7+/vN4EXnjbtjcs97sqwJBLQpHQJ7BSCb6CDquR8RQz+28z+wLX5e4fwo4wsz+5+3PcfSczO1FGbhRGhNvMmO7T/aCW7eTur9D/SVfFgD5BHyd67I/5YMwMQ/OwqRTYtm3/jS81fxEJ7v5Dd79Nuc9igunazKLuKcZg03KbHNBiTJ/ltSZgfCy2sCa4++Zm9qXsXH0C+w4ElPVm9l9t257t7keZ2XtFoZ2qdZdrGkdf/kgpsO7+13QejbZPDCG8WsLJMdCfMRJhVv7o7hhpLENYP+juezFyV4FdZLj7LcyMkZzzQa/NKbDwqOV1JrD/epgRHoBurPP1CiwjLOult8JIfFjChvBGZkSG1SHu/kLRT9/W8j6BhQJEsGE24I6TesEP+i/sx8liCr5kZu9z95dWgV0CwBNCs+l8GBYTrXh3383dV5XXCdD13H2Pcp+lgLsfpHMO5xLYf6iZ9jXx28eY2UXpes3sr1IJ0GlHRtgQArTXymzbS9398YzI2uZQRm9UKem7Z2qEvRyKDi7b3atKsBSAy8RxwfnktOgV2LZtb5dGoT7AX15Vym2hkDfr15x3HoFFYs+Apmua5qk59WRmGFQYZnuLUYAC+727/wz9Ux8vXPVFmoGeBuuQ37MEFn33uxpdh1o+vSzBcgvsqlWrNk/UGqT+JP3T3V9dXl8C02vTNE8q91lKQOzr3HMJLCMsFvzJCG0+wjIahhD2krNhbwTM3d+Hp8rdn8CU7u7H4EZ29yPd/b7D4XD//L6lHrAPAsv0/4d03iqwS4SVK1feNFFGItzHBFYu0Z+X15fAdS5GzMHaQI6ImRDCC7NlpcDyg7cLwXmOmf00u+ZVGE+awt/MCMlHEEJgqucYuFZPF211goRvhFpjRBVvy7a/yvTjKrBLhbZtb4wOpvNhQGxSbuPuzyuvLYe7v63cZ6nBiCdqaadsWWIJvppdHrr1n8UQoKv+AoHK1nP9s+JUibHA6j9OjgPoLGIaOMYI9Qh15e5vUNzAyMcsgZ1OHnYDENjNElUkz86IwOJKLgRgDERi5fusL5RuYwns29z9tOzaEB6m9s21z/VCCK/B6Cru4W8wCThOcAvzXuQsiAxKBgQbXfba2XnvnHsspYq8pQrsEgAay92/oPOdXob0zczM3A4PWHltCWbG6BOFYbnBaBtCeGXTNJD8qAIE7yA01y+31TYEwkDl8XtHHWNH3ol+MDRvj5NE/OqZqCC5sCa0bUs8BXQWhuvH3f3heAKrwC4yFENKRBPnY2QaEVioqvK6cuC2vPTSS3uZhfUNqCcEVn9zX1uWo3AO9HUEklFXfx+gKC8ird4qteCpBAzhEUR9Ko+RIwU2KcDoVsSBVIFdZKxYseKGUDM6H1ziyGhkZu8qrysH8aflPssFCexaBe8AuZpxrTKVE1ZJiCRB5gTXMIPsXu4zH6RawDxsvPGwfVhugWVEJTiE8ylWtBRY3JsTobiB6+T7LBfatn0k0Wfl8vkQQoBjjYaYwgsJnkFgY1yunAyPLvebC+5+Wz72Sbz2RovlFlgE1N0JkwMEKV8vX29m5xeXVeIjG4rAklZjZkeXy+cCsRQKMoogNkCC/xKCXliG4MIIzKcS5MBFTQxDuXyjx3ILrIKmP6zzfbIUWHfvuMs+bEgjLM+K4JZy+VyAGcjvx92PYPns7OxWOAa0mEAZVIanlPtPgrIv1jq9aIPHcgssca3EhXI+hd9dt1hf0jojkEt2RMiXCwpBXLDA4uwwM9KOoL7iOyAYhnUYSyEEMj0QVnLbvoa3rDzGJOA+xgtWLt/osYEI7HE630dLgU1xBpMA3VNyt8sFLH1FSs1rmYvOe5JcsVBfUY9PnLJy1AgAR38lsusrfNgLvVfFzy4oH26jwgYisMfofKgGI9N78tlPAoHQa6PbLSWUZEmgyyPLdSUIq3T3lysWAGfDe7gfpvJsmx2IrXX3S5VGQwLkTUePNA6l97yYD6Jct9FjAxHYNMKiGpQC++7yunIQEeXud8r3WU6QDk7gSrm8hEZQ8tE+qiwFeFecCN3orFH4sThWGGFRERYSMyFV4704Hsp1Gz02AIGFJUi5Soy0I16c+eIIgLs/Pd9nOeHuD1wotaU6DQS6MMoykj63LHzB81F9A9SGEXVpEkQVfrpcPhUIITwbHakUArA+BFYenphuDg1TjiCqYuLlteUgsinfZzmhyDIybefVY4E+WHTZC919u7710nNfVq6bhOFw+BAiwMrlU4GmaXYzs0lR/Ajsbct9FhOq0kJYIecjqGMkCJvRAu9PeW05FK0071S5PsD1hxDQHx+flrn7vyCUa9asuXvpGNH6bUII326a5jE96+5uZocm9mAhkE78kHL5VMDdH+HuK0ohAES/87DLfRYT8nnHSHx3//ee9eh6h5fXloMAGGoClPsuF+BLqeOV/m/b9mFm9jGyY5V7RSD2XVOcgYTyjKZpnjByIKlEKrxBnaxrUeSDKK5SdUrQiIzxulm5birg7lu5+29KIQCkZ+SVTZYCa9asoXxSdEuS31SuB3h+ymsrAcNQ7rfUUNG6MaeF8tTeoEirrUMIezDdwxmj/ijgmrpmR1MBR5nA9+or+IFBCVvA34odJkfsBxrF79az/W5t2+5T6sJTBcjrUgAAI1cIYUkNGhVZQ+CuHA6HDyzXAwQgpU5PgrsTcX+fct+lhKoi9uqW1BDA/+/uj1JtAlJlCOSmuNx3sOIxssSvUlFxYoikvFaP5W9GZo2gbzYz0uIPyI0xjDiK/o0cYNpAmkYpAAmkCpfbLyZSjQFljU6kYRbIFhxa7reUQGjc/evlcqB6XxhLUWdV+dCbocuSo2VmX4fSUj4XAkiNLAxMjDDorPRDJBejNWlAj1RKzW8UBE4mLqVCo53Bx6FaB2N68lRBI0HMuCyhGNV5q7GsC8QQ/JbzQKDPEzvKy46pNJNA/j4WcrnvUoA4VXHAZ5XrEiDvyZYtlwN0TPRRBVuTZEjWK8HXsbqhAsDJ7+KHUqTkb1GG6Cfo+uKvEeYteG6XXHIJf5OxENWHqQY3P4dasLppmkeV+ywGQgjk5YNZXl65vgSZsarYNxEacZY0pE4jWSq8NpfAbkrxiz7dNAFDiiwDpXqjNpBZ8E0J7icUjfYRd/+dymv20oxN0+xAEbpy+dQihPCM8uUnYOEu9jSjlxmLR6gewbwuRzBX8boEEvPK/RYLWPypJgGYS2AB0zipKuXyHLOzs3dkeieZUmoGI+XrVOY0CnvbtpQmpTTR2HNSCaUPrF69uleYpxLSl2KqSh+oxFfuc1VAHj3HVbmfF5TrJ0FJiXPWtVXVP6qkLCo3K/0z5v5nOLvcLgcMAAX3KDVUrkuYnZ3F2fCj4rh8eL8bDodM/7ybO8vIOjDnqjk+CYdrG+A9FRC10lsUWPrhI8p91gW4UlPNVXm5ejnFSdCIQljhROC9w2BcjHwvWAoZOWMeQTJcy+1LKEibQhe9+jX9CDTdo59SCDn9UJ3wQ1Q+VEIilQ6pChPvSUEuzw8h7DuX/j/VaNv2MVTDK18MwDrNPTjrAnenwHCqUMKIsVW5zUIgrpNiaL1l54HqzVIif53qxMppQWUW9OIRo5T+Bwq+XhBBr3L9pKzcI18uHZZQwD3d/Rk9P89X1uwTdZxNknCi9w+HQ2aStWoeMnVgJJhUaYX8eZpdrG1IHx4zGQ+xADHNQK4qb0oCYwjhZVxTeZ05VIkb//5E4yeHslQfgepRGnkyEr/g7g8q95sPEtqjKMKRlsn5AFtCs48blj8SULJhuyB1fUh7kPC4GDPIVEAuU0qX98YZIAQYBcPhkM40UCvEBJDazIO/ifooUOCBEDoK+17BfrxteXwWLSQQj4/I+a7iXx9UZxXO82m4Q+WJug08pq71UarqTQxFOXJzbMplPvmq6MYzMzMkBzKtP3FtVSEgZ8UL5d5d6/2nGnzJ0CUSuF73rZlRz5RII6q2MCLF/lcYEXkBDJXcobAEhSAWfQpTLj7Je+h8Py1L+5TQSEkpIFosUTVwrFgH3jdaPxENRkujxdIT0cGpXyA+dUHBRRpV709M7EIowKs1NG3dGx+1Xh48YSzzPheUj3SuuEgMrVuUx14KaOrdU/0GqFtAPavemN8c6KUS0JOYbsUKLEig1haKH9gZVSWE8My5Ul80A+xHTlepA1fMAx706tWrt1So3IMYeaBsMA4UdEGJnV2HwyF85bZs2xcgsj4gXZRynkz390EvVUYADgtcovwgLJS3pBHdtljjfRUUlwoIo2q/oibAhaO7pm6Qd5TufTDqykINvIqKJYWmez4swhJpc8TMkGrFPmh9fkAVFWuF1B9sfalPFRUVFRUV/5h+yK4ky5NIH34IM+zIdaK41AEcbw9d/nAP4td+KB6xnADP95GrcTtaBDG1aT8inDAcoJ5uI54WDw90Ecfi3F0QsxrOcU2c+/76n2NyHFrJY/A9hNQYjsk+0gU5N4Yg+3HMXfRDucoxWkrHJVTwJfqBzdhcU/N2ynbgmjk390ZDjp3hUfH66dpJxabLC8vRQ1NcK8+We8YRwzO7g67zxhiA5HCxTXlNQCWcqPKNUUi/A0pwxuyEbBtKa3IMntOD9a7urwAdzjddRhoPRd1NaKsDoU86cRcNJOqFhsJ0NqHuFRb0jfGr47FSKciRjAQdk5f2eyKIlOJxJwKWoY5U/5S0HASFLFnoJErxkDjX9ehSwzmaTuBfRxi2UC+AgZn9QR4uou0pb0Sfqqjz8eLk1KDlJduTSkI3lsuwwvNrldBTnAJBvQ8WOSnvUGK6l31Uxp373FcfK70I4G7pv4X/Hx76L3SBwXkhbvd4GIoQwrPMDKqM+8ZZso2Ouxnhg+qGOBZUpJgOzvMxBFKC+JoQAlFinCMW21CMMJVmKH74/RACQk0RuePUkWYsR2wqQI6Qu+OJeli5Drj7iU3TdNFA8mql0ECEZSwBkDKZa9as6RIYFTZHDal9s2VEXlE8AtL+ad3OghoLPy77nxf5Zyr85duZGe7Ozs0rQbqsaZqYVsJIK6oVjvX2LFM2LhztMcWxaNa8j7bB20e8w09Ez5FTRbmgWE6Ij1sdDemTlT6YpyAw6Xg4B/RRHpvTe2TC5g09EpQCgyOG5skj7IBmDj4I+prFBnqapfioRuoQhBBeDn2XL5sa6KVcQZnxch1Q8EUXaaQcK3qmUomEl/HL4XD4gGIfhKZzv6p0OmF/Iy+JYr06xsdzDxicqNJnbpUtg0tdgZCnZfK3I0xdVoRGOmpSxQ/pwgsvJECdl3rRcDiMMQAawcmx+jGJgGlf5U+lEQyBpVgbAsuMQFQ/LtV4nRJYYiu+nuoQSNVBfYrqh45B9jGjdHxGXIOe31gjaGUeMMqPzAYJZobgM1Acz/8SYu7tM2kbqXKoHUvi9Fh2LEBgGcE6XUvtNhEmhIVAGATu5xD0aRsVJ+7+VxvJPoGFf6R9+prhcNgVkpDbshuNtSwJ7PfSMlq5MzXm26XWlyn1W6oM10g7ohi0Q8yDwvZ4+X/Gs3X55ZeP6HwSviiwKdI/z0btE1htM1JbIRtlj2zbFj2YAO2uv1e2HfULUBOIeYjqQ4mmaXB80M0b7x15Y+jpCOxnWS/dm8DvsY9hajCfwEooukxMCWyc4mQcUMeJF8/0HqfchQqs1u2tF8pxeODoiozIIwaJBJbuf+hn+zZNQ4shsmVHyqJrhL0ihEDyHiF66M8ErozMAswKeeC0Wl7ulASuT2BzTBLYEgq+Zhpn5MQA/HCfKzZN79LJe8MuxdHS4+svw+EQwwqDcJWi39CzqdFFb9rpFVi9FB5Ub/sgPC+DwaDzYUtgqYMVQ940/ZwooTujbVvSXxCaBQksxXvVTYUku9tIkKg4XdaZigJLYLOsdtoCnVOS7O7+KYKtVRkw5qqRgZBvkyBhenfqUkilwFTQYrEEFiT1iTZGGKXleiDh43gUNrl3uR4ouixuw4yUCSzXgHv5CerhNb0Cq+a6CGxvsqG703W6M6BUKhKVII/RxGKNpTEZfUmoSzQOmEtgAfWotC+NJHYv2Qdtg8Cid56bLduhjP6SSnAZ8QyifdAf6cA9sdP3YDC4Lx0HJbQfUmA197lYAosw/QmDqo9eAzJmYTRoutxrMInqgqFBBbu57m/E6BIdN73uXAkJdfR7c6tIA0lTPZDR9YGy8rW4zrMleDAC3UvOjK4RvTRBU90v1DmFyPyxpEdGHQnseflyBEdpIjFOVbGx6LCRJUiNPThutg/l3d9SHGcLNSVGnbnulVdeyUzyPVFrkwSWAG/uuTMO+yAj8nf0bCjX5VBJTZ4fnXXGmj2HECjQweON7EZmdE1ntcI+qOMID5OGEN0opFGG1A2KWHSUDMIlHXUs2p0pFvpIAtJZqWZ2iJbtP7rH/0M8cIBjLdcBjVIU98Xqhpi/vjhN+riekW1HfyvqbcV2QYzMBGArNSfOImSYMnrmdNrs7GxK9NtP+8EMwEH/kkTBtF2CPtyB6gbMaZGL8/2ju19QrsuhpEJqFZCT9priuVMGnhJHXHf8QOT0oDvi6SMHmnbIKwW5zXRKRDvTMvlE/N0ZNRrNXq0O0jR9G/OmoIOGEBCqOCrDx+J4oIaX6JzebANRSuikY6ksKjxB0DOjHVVQXisj4y1kCKRkQAw1VVW5UMU5El+5h/jmU+GbxalSKPj8EALHIkQSI44wv+hxc/dns49qWRE2mWer3oDUeDkRzqGkU6lzJyBcOgeGER/Ek/qeWwIfIiMpLU1xqHAeWIW2bXGS8PwSl3xzDE/NTFToxqM2NjNNLcQzPlyjKi7K+5bpIKKhHijvC0I+NsoCUmeSbqkWPLgpcZuy70Rdkm3KZUDnJdSOQHJUA0bb7YbDIb/R61K5nnsOh0NcuTgZeIHdyKcREycCx7mWXMa4eXcnjZ2qMalOlbx82w0Gg3Q+9MK8vyvpQJyb83B+nkVvwWHOK32a46CH8wwmCmyCdGhczM/ggxgMBswU+TWgwmB8cg3cM+9r0bM5KioqKioqKio2ZIgVQB97MbypuFMMHULpxgyhHBhafblb8lzdl36qTdPg5Rmr4w/EQeLp4YcwPXRCdLQdm6YhtZo6sruqIBzr4zJclUScKeyP2gec54n8tG27i3K4nqIIMvTQeI3SJXfj3liHUaUcL4oP360wsCglhBH6ZBlMpIk/U+e9e+JVlYL99KZpdtY1xOMX90lrpJ1gMLgvHRfdHpsh3pcMPBI+MbbQS9Pxyf/ifjn+43BwKBYjxlFgGwwGg3T/PJ8xZmNqoNx+QuS+qUgfjC9CC3mBsAdYou8s9wNYx2ozOSnaC7qIyKu/KfRvzNOjega74gmiN5diSuEYodt+Ao0WQmD5xaK2zoZ7FCMAhQUjQFcW6kwR0URXbJwR++CiDSHgAKBTS/zw+BhkYZNNSxQXggP7AbtA+GJXFxdXMR8c56UqeQjhAIQcfheqSszCpvrgaXICQwI3yvousAboA+ZZU0KeqCxiavlY30gookIOd4HaCyHAiBCddoQSKjH0YCZwgqzkuRBSmH2ElHCilgQRZIRejhWOmwqoBj8xnQRUjAUUp/hN3KflOsCXjsfHzD5RrktQyvRfxcVe1Nd8jZdpZlSHiYEhpD+r9OSWqn9KeSJeMuGIUGpY8rzEw6mJoPMwMuPZ+i2jn45LYDczBx9eJ0BN0xA3AEmPnz8FxTCq4SLGydGVsFfvK2Js/5Zct1j/8La6p+gQkZs6OSpemfYvoThd4mZT5Be9JnCKUF4psg1ZOCHkdNf/gY9Sx6fz90jaN9Ud5XSYTrZAgdH45kOKA+0D3B8jRrkcQPgnP/ykOlaa6mmidp62JaxvrFSRvGqxUARUk7vvldbJWcBLwiu3S7acNO736+9t5CRAYLtrUbYAU+62aZmCoxFYhC4KrAQuBZu/J9v2nxgBqbVAU4zsuK/Q/VCSlLA+0rTpSg4mPs8QwvPgfYne4n9RcMwejPidBxF+VddySlqmWI7fl+fgw1aAfG9MyFSAsDo9ECphT6y0zcsYDodjDwI+VmnJP9ZxetUGBWUwXd8N96de8rdKTlZFN/bQPvCmudMCgWUWQGCfnC1HGGOsg1QJopk6gdVIvFvaPmGCwDL1EsDD9XUFgucQWIqxse1B+p8RnxGuG3X7oGLO1LqNwknklYLhS4FN8RldULj2p1QR5yBoKD6jtm1fyPPrsyWmAtKn8PzwQHpr9c8Hxa3iDWOK5gHiTRpzU0pg387fcjr8TOel2Ubnh88FtsQkgc3RJ7ByJY/dX5/A4ohg9CJEr3BTjwmsUn9w3TIiJ49aTKNZgMDieWNqHxFYpeikUZf0ol9R36wshS/v4QU6D166WzRNQ1ul3gCmqYC8R/SA4qZPK9fPB6kT5BTdn/9xU3KsvqkwCWxyXyqZMJbdJKUlCcwiCSzZBuiC6L9nhhAQwG+V22YCi4//INVivVidXUY8bhJY9El6DZxhZicRkoirVYmKyZJfkMCKoSCEshNYVAIzQ3emIB2tkYjcYhbqNWYxDHX9GI10pIlq0dRCxhRR+Nz0t8v186FtW4yCc4nLFK0VdTd89KtWrRpp46NyQJRE7/ztorlSkh65Uggk1U6uqsAywlLLFsqJAPMYI1pumwnsBbQwlfHF/wRYj/jk0wgroyvVaiWjFSue63mJli1IJRCVRuZBHE2zEXZWVFwaSJiBRqLiEgaDwbYhhFgWlfdXGmBTCVrv6MEQxX/rcn0OXlqKLRCVdZz6HxCE8hJ98aSwkMIRQ/sS+gRWy5+jUpY89EMYJfpiYcFaCiyjfZymxX0+t9w2E1gor03EdmCUN1RtLLYdUwkA1r6OwTp4UrIwaKTBM53Y1RselvUpNiBXCfQ/rEFiVXrzu4Ayazn/RIZmqqBRgjRrXtQryvUJ4hgRukgVZTX3O4eCqJ/YLr5sJa9R7qBSYKVHk2aN7kacJ8bfWAYtWFeBzdahAnVF1XIdViMjmRLRyFGLpe5a5xBYgnpSKfmYJUB6j477rknB2tBUjOrp/8LoQugZHKLgk7ozKVhGHdDZZt7S9VMBjZQn6yVBeE+KltqTJsSZvorOFzM3c6iIA+kpa9asWdO1lsTjk+uwOSS05F+hv1HXdZLAwgaM0Vo5pAZAa40JrFQYRvCormQCm/OwqCmxiDM8cLZvUgkg5XdKy3GuoHfSHirlYekZkMqDbjzmIVQcLenkeZ5cpLVQCTKja3sSJPUxvHbkIAKznN7dkeW6qYW4R4KGMVRIxMNlSE1SXKNEytOQAmv4IFFNuDmZ+rFyR6gwEeBJryKQemulOjPdf1+9VcdI7QMPPBCBwGPESDumw6ZwPyXoMR0wio0cRyMw/CbHYJTdD64Xy58iwOKbUYHQa9l2P10n25KaHUexLNj8Yqg8hA7hatsWYbLhcEhWKnloXA8OFZ4b9GAXiqnOMYzIpM8gjDw3wgzvR/ZFPrrq3mBacFgAnCwxT01xv2Rh/B5XcDY7XGdmZoYK4rGlqVoi8c56QxynDjwAtaKnwRkFJkhTOQBe1czemqY7HriYAVyL5Hrl9QoYAV+grx6P1YkhBKZ7LGJ6q/JR4Pbt1ZUlSJx3rDBH27Z0YtlPGafQN2xXuj0pQkEtVdzAJ2LI0XtVSYZcL520Y6UVZgr1ZeVY/HQjngKoqRROIuWxfKAhBM7NcXF+HIb7WqlFZElQbmmM+6Qhn8pn4kKmn+z+uImJA8i3E0XFjIU+ynM7Iu/Yo4wKrp2cs1SWibgFvGVU1+GaMFqxB0ZS3qceTM9KKCTHinSXkWQ2rU9FIvi71ElH8pCki+W6YLd/H6S/jSXQ9RynMwCzZdcur2cSFMCdB7hwXeW1U4aefg1jM0K57SSwndoeMdNQH2FsP52nfEblc43XktLDJ2zDM5n4bCsqKioqKioqKiZDnC0ZsF0tg4rFhVgHKLyrX68uLH1a6mDRk14sSqYL68uh7AEopWitErk/HA5jDC38owpmUJ0P67njK9cVMAci2aF9UqHhyI8qPpZAZ6gsQvswTDYIowPGQc8iMgIwH7OzszG9nedDwYwJBaGpxDhmmJUQL35oufxqAYSBwhIhhJcShX/KKadQjLfXrajI+lMSn6pMgkQV7UBRYP4WDdNbf2BtoT5Wx/I3FFkqGiHPFIXqSCOHWiKtZKxCy7qCj6W0xNcGZvYNMS14AOFrn8RyOF/CA8vtgYo8b6Zzj7ElCSqgMVK55moDPSDiQGlyFiOtVKMApwE5/KVzAGEkJ+qeKjwG/3dNjRoQ8pTwOYqsAvnEk+eGaitUQCEyCVcoagPkO8Q6pSbJwye/vguy1n6Phh/mbzkgYm0t1U+g9xZ0FjWmSE/BNcu1J7K+K4MvBwnXHZf9/e9/30KtRwnjo+w6fV0h8cmxejTPQmX1b8sskkof5bjiiitupkgraKsyToKiJNQM4DnhRSTHjOPBRUN18UOGxMMViLQ1Nb5EhcH7kvZzY72be6jw2110jfvq+ogUi9yr3iO1D7iXRftwN0gglBDs1N3nfwSJqVgjaFd9GxBax4NSEPLrpELgnYluW/nFj1XnvtPEH5IVQCfvSIK3bbtNCGEv4meVI4XblEoz+5nZifn55Oo8WqUweWnfIMGOiiiqUYug7kggjzxd9yE/TU4MgrF5qTRS3gvBVtoNHwbl8vn4OO9Z8uzh5XslqTo4B/CUhRBo8Y6n7Jv5denDfDOCDHEPz5qvx8GiZEOKYeASJv2Ge9ie0ke6VnLDyIe7GzOdqonzMR8htYqPj7w6yubjiEFIyV07Ro4DPFwU9GA73gfnorhfb+nUqYEyQ/EiRX84+U/qa4pQlaGCeH9w0zIqIhR4iqioEg0ACcAJVGChTpSWHSohwet1gpbxAo/mb16EPg6KnY0EKyM05ElpXyr2Ef+JYJEle29lPJA2gicN7xJBLriFH6eXzkxB4A7H3krVGhEKOnYzCnKdp+o60OH5UI/S6EvMKqPWi1A/8utSB8OYaaDyoiPpQUSnUa9VswgevwNTGXfc3UpAfCSeRS3jgyJ7l2vjY8ctTPA5OWvcE6WKGD1JivyOqt4g4FvzwStckSJ3fJAj72zqwPStpsax3Dgjk9JZSN4b8U+rh2sMtmD0UUpJ144el6eEC+FBuDHC3kvUvIKkiZtlWsPF+2Dtc6heFlPoyHSGNUxmAh+AtqVGVQx+cXdS0Rm5iWcln2k3uWjJsCUjgByxXdRTgPpXuFS5XoSQSH1csgg9HwsqyvMQ1iuvvJLpmqmc7t9c92fURrNzK+u8hFbyMaAOjRQpVhxAVGWorqhRn+xgiu8dzshLRBfLmQF0rc+enZ1FJ8fl+lBSmOTe3p1aWxptyYpgRGc7XN6PUgMSVDM+fIo3x+c6tdCoSGxATG9R9Wpexog+qW0JfonFiqUrdrqd4gnIsUcvZB0BMjzY/XU8hBh//41UnS8aFjJEXks6dWnpS/d9SnLHqgR71Bd56SpRyQiDgFAvFmFk+9sptoARmmtiVOPlEgPAx/hY6dgIZtoOAUCdeRb6sASBHH8+plfn7mCVbEfXJNV6rAaA2iHF0u8aGWN/BaknMDIE35CxzOzDqMrzQb1Clyf/jaB41CFGZlQmUrdRKR6mOAWCXYgxJjCHoG/YG47HgDL9wdxXdyhUkJEN1YUAoKtMy1VULBmwslGNZKTFkpzlNhUbCDTVkkAHtcPUC7VCwWCimliHbpv+ZnkXwSR9lGUpiityiIoognLib9bzOzW84DicKy7T+ThHira/QTqfjhejq/Q3v+M5e3Kv4vmy+4AS4rgxkisdN9seRwTr07WTTgPXzL78jfUd703njtenbbtnVByPfThG2p5r4Fq5pt78LKBt4/2V63Lk2+gauf50LdBmYw0/pgqindDZ0NUg3zE+oHiwcKlZRbAyQc2EHcKjogtiCKTGbehn6E8ICswBOi762c2gkVTmHJ2YfahbxUNFx3waTgGoNL0s9EXqX92S/DA4SVVXwYiDEUC4uT4+LApzoNPRETHGxeo+MKQw+KB4HqJzsT9MAfeBTn3X7N7hj/dKjhLRZjGNBspOlBmUHQK4K1SdrgPel2eEZd/FoIpbhW7CCISKg2cl0BqDjWuLVcG17ZbD4RAONmXcUh6qLyg+Gr/Z/9BssUq52BlmBO6d54EtQkfEMc54aiDBjJ4XCcYdIMRFV0EfYeWfo/XoeRgJlBH6kJZhXBwmocM4iY3o9GKhyzBsEPg7qho1D5XgaUaFTSn2q+PATCAc2zdNQ/tJBPb6sv5Tp8FICynYnOtGqOLLwyrHkONvrPzU7A5Hg4QBq/z4vMFIOiY6q66Lnq0UMSYD4n2qXYVRw4iO0BNkDd0FbUbMcKxSkyCin3smJeikFStW8AwQbJ4JH3JnvYu9iMyM/qd6OPc9wsqo7tYHsv9pCQodR18HVBfibBksDlbvXd4d1FbXxWeqIIHo6kgBFRaD6kFgt4Mq0XL+Jrr9KykqXqMNCXdMT1A2R0EDZUKWhDwWJxNLEAUrh64DgX24iHGsdqZS6KB0rCggqmL4KTrX0JtA62LUfc9xSVNBYOFlP5i3FAVyczKT4HjgvLEiIffRti15aDET4bLLLsMVDP9M1sDHxXv2sShbJ35X/1NCiCYmsBipGg0jOEVIqNwSi+MpoZHuPF32gpiOI6H1Ur6dntFdmqYhi4Lrvb0EFt43ZmvIFdwlS04VRKfQ6geBQ0joCE2PKgSAUQWPzplsK0oFIpu0k+jLlncFnz7TEiMUNBb8a6J0EJZIfuv/nUkHmZmZgZaBsooZsHjF5FqF1jlctQ5IkoQch3xHFUj+eLxUh2rEjEKK500fEyQ7ZHrqIgMvCQWF04CRLrbmTNC0z7HvEkI4K2XFaltGLKilWA5IU/075RShAMgIBScv1FEqJYQ6QqlSBJZj4cKNAkVtA6kD8N8pNgJ1ixGWERmmAp10n5mZGUrbk650sM5BJUU+ZDKXz6MuBHorbmtKcYpShNudWHpqo4YMhZ1DCBDh1D/F545HCX0R3zUCSO1UBAkB5m+iipj++c0U+Xy+cvUXwOUIH5rKQOKbp6lEZ3VLCNiHh0+7JLhJBIdRhpb1nDtm3Uqo0bHxxaeSQnC8kOhbcR0pOU/qCffB9Ms90H0cbx3XTdt7XJsdZyq1BKFKtbnurmMibNwH8QrUEEizwxZZWaKRzoo6Hno+kWV48dAl8UZtoWeLbv1MDQwIFrrpliEEahvwjO+lqLQ9VfuVaDTu8aZqtofKQi4X+ntKt2eAYTt4bc7Hc0JXHukOWVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUbG+8X8PAvEkVrpxTwAAAABJRU5ErkJggg==" alt="University of Canterbury" style="height:140px; width:auto; filter: invert(1);">
+      <img src="data:image/png;base64,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" alt="UC Vision" style="height:80px; width:auto;">
+    </div>
+    <h3>Thanks for coming!</h3>
+    <p style="max-width:600px;">We hope you enjoyed the workshop and seeing some of the maths behind modern computer vision and AI.</p>
+    <p style="max-width:600px;"><a href="https://ucvision.org.nz" target="_blank">Click here</a> to learn more about our Computer Vision research.</p>
+
+    <p style="max-width:600px;">Additional information about UC's Computer Science and Software Engineering degree programs can be found <a href="https://www.canterbury.ac.nz/study/academic-study/engineering/schools-and-departments-engineering-forestry-product-design/computer-science-and-software-engineering-department" target="_blank">here</a>, or please email <a href="mailto:csse@canterbury.ac.nz">csse@canterbury.ac.nz</a>.</p>
+  </div>
+</section>
 
 <hr class="divider">
 
